@@ -303,8 +303,6 @@ Status Manager::PostRegisterHook(uint32_t asid) {
 
   if (FLAGS_stirling_memory_percent_to_trigger_restart > 0) {
     memory_watchdog_timer_ = dispatcher_->CreateTimer([this]() {
-      LOG(INFO) << "Memory watchdog timer expired. Checking agent memory use to see if we need to restart.";
-
       auto memory_current_s = md::FindSelfCGroupMemoryCurrent(px::system::Config::GetInstance().sysfs_path().string());
       if (!memory_current_s.ok()) {
         LOG(ERROR) << "Failed to get memory current: " << memory_current_s.status().ToString();
@@ -325,17 +323,25 @@ Status Manager::PostRegisterHook(uint32_t asid) {
 
       // TODO: This should use a difference calculation to ensure that the double math works properly
       if (percent_used > FLAGS_stirling_memory_percent_to_trigger_restart / 100.0) {
-        LOG(INFO) << "Memory usage exceeded threshold. Restarting agent.";
-        // Restart the agent.
-
-        // TODO: Use error code that is unique and have the pem container image's entrypoint script
-        // specifically check to see if the exit code is 100. If so, run the PEM process again
+        LOG(INFO) << "Memory usage exceeded threshold. Performing graceful restart.";
+        
+        auto s = Stop(std::chrono::seconds{5});
+        if (!s.ok()) {
+          LOG(ERROR) << "Failed to gracefully stop agent manager during memory-triggered restart: " << s.ToString();
+        } else {
+          LOG(INFO) << "Successfully stopped agent manager, exiting with code 100 for container restart";
+        }
+        
+        // Exit with special code that signals the container to restart us
         std::exit(100);
       }
 
       // After timer runs, reschedule to trigger in another 5 seconds.
-      memory_watchdog_timer_->EnableTimer(std::chrono::seconds(5));
+      if (memory_watchdog_timer_) {
+        memory_watchdog_timer_->EnableTimer(std::chrono::seconds(5));
+      }
     });
+    memory_watchdog_timer_->EnableTimer(std::chrono::seconds(5));
   }
 
   // Call the derived class post-register hook.

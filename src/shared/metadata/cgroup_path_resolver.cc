@@ -74,13 +74,28 @@ StatusOr<std::vector<std::string>> CGroupBasePaths(std::string_view sysfs_path) 
 
 StatusOr<std::string> FindSelfCGroupProcs(std::string_view base_path) {
   int pid = getpid();
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(base_path)) {
+    if (entry.path().filename() != "cgroup.procs") {
+      continue;
+    }
 
-  for (auto& p : std::filesystem::recursive_directory_iterator(base_path)) {
-    if (p.path().filename() == "cgroup.procs") {
-      std::string contents = ReadFileToString(p.path().string()).ValueOr("");
-      int contents_pid;
-      if (absl::SimpleAtoi(contents, &contents_pid) && pid == contents_pid) {
-        return p.path().string();
+    std::string path_str = entry.path().string();
+    PX_ASSIGN_OR_RETURN(std::string contents, ReadFileToString(path_str));
+
+    std::vector<absl::string_view> lines = absl::StrSplit(contents, '\n');
+    std::vector<int> parsed_pids;
+    for (absl::string_view line : lines) {
+      line = absl::StripAsciiWhitespace(line);
+      if (line.empty()) continue;
+
+      int file_pid = 0;
+      if (absl::SimpleAtoi(line, &file_pid)) {
+        parsed_pids.push_back(file_pid);
+        if (file_pid == pid) {
+          return path_str;
+        }
+      } else {
+        LOG(WARNING) << "Could not parse PID line in " << path_str << ": " << line;
       }
     }
   }
@@ -89,31 +104,38 @@ StatusOr<std::string> FindSelfCGroupProcs(std::string_view base_path) {
 }
 
 StatusOr<size_t> FindSelfCGroupMemoryCurrent(std::string_view base_path) {
-  PX_ASSIGN_OR_RETURN(auto self_procs_path, FindSelfCGroupProcs(base_path));
+  PX_ASSIGN_OR_RETURN(std::string procs_path, FindSelfCGroupProcs(base_path));
+  std::string memory_path = absl::StrReplaceAll(procs_path, {{"cgroup.procs", "memory.current"}});
 
-  auto memory_current_path = absl::StrReplaceAll(self_procs_path, {{"cgroup.procs", "memory.current"}});
-  auto memory_content = ReadFileToString(memory_current_path).ValueOr("");
+  PX_ASSIGN_OR_RETURN(std::string content, ReadFileToString(memory_path));
+  absl::StripAsciiWhitespace(&content);
+
   size_t memory_current;
-  if (absl::SimpleAtoi(memory_content, &memory_current)) {
+  if (absl::SimpleAtoi(content, &memory_current)) {
     return memory_current;
   }
 
-  return error::NotFound("Could not find memory.current for self cgroup procs path: $0",
-                         self_procs_path);
+  return error::Internal("Failed to parse memory.current at '$0': '$1'", memory_path, content);
 }
 
 StatusOr<size_t> FindSelfCGroupMemoryMax(std::string_view base_path) {
-  PX_ASSIGN_OR_RETURN(auto self_procs_path, FindSelfCGroupProcs(base_path));
+  PX_ASSIGN_OR_RETURN(std::string procs_path, FindSelfCGroupProcs(base_path));
+  std::string memory_path = absl::StrReplaceAll(procs_path, {{"cgroup.procs", "memory.max"}});
 
-  auto memory_max_path = absl::StrReplaceAll(self_procs_path, {{"cgroup.procs", "memory.max"}});
-  auto memory_content = ReadFileToString(memory_max_path).ValueOr("");
+  PX_ASSIGN_OR_RETURN(std::string content, ReadFileToString(memory_path));
+  absl::StripAsciiWhitespace(&content);
+
+  if (content == "max") {
+    LOG(INFO) << "Memory.max is unlimited.";
+    return std::numeric_limits<size_t>::max();
+  }
+
   size_t memory_max;
-  if (absl::SimpleAtoi(memory_content, &memory_max)) {
+  if (absl::SimpleAtoi(content, &memory_max)) {
     return memory_max;
   }
 
-  return error::NotFound("Could not find memory.max for self cgroup procs path: $0",
-                         self_procs_path);
+  return error::Internal("Failed to parse memory.max at '$0': '$1'", memory_path, content);
 }
 
 StatusOr<CGroupTemplateSpec> CreateCGroupTemplateSpecFromPath(std::string_view path) {

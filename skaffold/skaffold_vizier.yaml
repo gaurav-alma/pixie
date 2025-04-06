@@ -6,7 +6,7 @@ build:
   - image: vizier-pem_image
     context: .
     bazel:
-      target: //src/vizier/services/agent/pem:pem_image.tar
+      target: //src/vizier/services/agent/pem:pem_with_script.tar
       args:
       - --compilation_mode=dbg
   - image: vizier-kelvin_image
@@ -90,7 +90,7 @@ profiles:
     - k8s/vizier/sanitizer
 - name: tsan
   patches:
-  - op: add
+  - op: add 
     path: /build/artifacts/0/bazel/args
     value:
     - --config=tsan
@@ -144,3 +144,4 @@ profiles:
     path: /build/artifacts/context=./bazel/args
     value:
     - --config=x86_64_sysroot
+    - --jobs=8
