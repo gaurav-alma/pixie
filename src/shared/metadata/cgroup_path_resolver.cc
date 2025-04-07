@@ -73,34 +73,31 @@ StatusOr<std::vector<std::string>> CGroupBasePaths(std::string_view sysfs_path) 
 }
 
 StatusOr<std::string> FindSelfCGroupProcs(std::string_view base_path) {
-  int pid = getpid();
-  for (const auto& entry : std::filesystem::recursive_directory_iterator(base_path)) {
-    if (entry.path().filename() != "cgroup.procs") {
-      continue;
-    }
+  const int pid = getpid();
 
-    std::string path_str = entry.path().string();
-    PX_ASSIGN_OR_RETURN(std::string contents, ReadFileToString(path_str));
+  std::error_code ec;
+  try {
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(
+             base_path, std::filesystem::directory_options::skip_permission_denied, ec)) {
 
-    std::vector<absl::string_view> lines = absl::StrSplit(contents, '\n');
-    std::vector<int> parsed_pids;
-    for (absl::string_view line : lines) {
-      line = absl::StripAsciiWhitespace(line);
-      if (line.empty()) continue;
+      if (ec || !entry.exists(ec)) continue;
+      if (entry.path().filename() != "cgroup.procs") continue;
 
-      int file_pid = 0;
-      if (absl::SimpleAtoi(line, &file_pid)) {
-        parsed_pids.push_back(file_pid);
-        if (file_pid == pid) {
-          return path_str;
-        }
-      } else {
-        LOG(WARNING) << "Could not parse PID line in " << path_str << ": " << line;
+      auto contents_or = ReadFileToString(entry.path());
+      if (!contents_or.ok()) continue;
+
+      for (absl::string_view line : absl::StrSplit(contents_or.ValueOrDie(), '\n')) {
+        int file_pid = 0;
+        if (!absl::SimpleAtoi(absl::StripAsciiWhitespace(line), &file_pid)) continue;
+        if (file_pid == pid) return entry.path().string();
       }
-    }
+             }
+  } catch (const std::filesystem::filesystem_error& e) {
+    LOG(WARNING) << "Filesystem error during cgroup discovery: " << e.what();
+    return error::NotFound("Filesystem error: %s", e.what());
   }
 
-  return error::NotFound("Could not find self as a template.");
+  return error::NotFound("Could not find self cgroup path");
 }
 
 StatusOr<size_t> FindSelfCGroupMemoryCurrent(std::string_view base_path) {
