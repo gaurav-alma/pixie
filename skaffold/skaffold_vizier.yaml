@@ -6,7 +6,7 @@ build:
   - image: vizier-pem_image
     context: .
     bazel:
-      target: //src/vizier/services/agent/pem:pem_image.tar
+      target: //src/vizier/services/agent/pem:pem_with_script.tar
       args:
       - --compilation_mode=dbg
   - image: vizier-kelvin_image

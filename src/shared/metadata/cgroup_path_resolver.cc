@@ -100,9 +100,40 @@ StatusOr<std::string> FindSelfCGroupProcs(std::string_view base_path) {
 
 StatusOr<size_t> FindSelfCGroupMemoryCurrent(std::string_view base_path) {
   PX_ASSIGN_OR_RETURN(std::string procs_path, FindSelfCGroupProcs(base_path));
-  std::string memory_path = absl::StrReplaceAll(procs_path, {{"cgroup.procs", "memory.current"}});
+  
+  // Try cgroupv2 first - check if memory.current exists in the same directory
+  std::string memory_path_v2 = absl::StrReplaceAll(procs_path, {{"cgroup.procs", "memory.current"}});
+  if (fs::Exists(memory_path_v2)) {
+    PX_ASSIGN_OR_RETURN(std::string content, ReadFileToString(memory_path_v2));
+    absl::StripAsciiWhitespace(&content);
 
-  PX_ASSIGN_OR_RETURN(std::string content, ReadFileToString(memory_path));
+    size_t memory_current;
+    if (absl::SimpleAtoi(content, &memory_current)) {
+      return memory_current;
+    }
+
+    return error::Internal("Failed to parse memory.current at '$0': '$1'", memory_path_v2, content);
+  }
+  
+  // If memory.current doesn't exist, try cgroupv1 approach
+  // For cgroupv1, memory.usage_in_bytes is in the memory controller directory
+  std::filesystem::path procs_path_obj(procs_path);
+  std::filesystem::path parent_path = procs_path_obj.parent_path();
+  
+  // Try to find the memory controller directory
+  std::string memory_path_v1;
+  for (const auto& entry : std::filesystem::directory_iterator(parent_path.parent_path())) {
+    if (entry.path().filename() == "memory") {
+      memory_path_v1 = absl::StrCat(entry.path().string(), "/memory.usage_in_bytes");
+      break;
+    }
+  }
+  
+  if (memory_path_v1.empty()) {
+    return error::NotFound("Could not find memory controller for cgroupv1");
+  }
+  
+  PX_ASSIGN_OR_RETURN(std::string content, ReadFileToString(memory_path_v1));
   absl::StripAsciiWhitespace(&content);
 
   size_t memory_current;
@@ -110,18 +141,54 @@ StatusOr<size_t> FindSelfCGroupMemoryCurrent(std::string_view base_path) {
     return memory_current;
   }
 
-  return error::Internal("Failed to parse memory.current at '$0': '$1'", memory_path, content);
+  return error::Internal("Failed to parse memory.usage_in_bytes at '$0': '$1'", memory_path_v1, content);
 }
 
 StatusOr<size_t> FindSelfCGroupMemoryMax(std::string_view base_path) {
   PX_ASSIGN_OR_RETURN(std::string procs_path, FindSelfCGroupProcs(base_path));
-  std::string memory_path = absl::StrReplaceAll(procs_path, {{"cgroup.procs", "memory.max"}});
+  
+  // Try cgroupv2 first - check if memory.max exists in the same directory
+  std::string memory_path_v2 = absl::StrReplaceAll(procs_path, {{"cgroup.procs", "memory.max"}});
+  if (fs::Exists(memory_path_v2)) {
+    PX_ASSIGN_OR_RETURN(std::string content, ReadFileToString(memory_path_v2));
+    absl::StripAsciiWhitespace(&content);
 
-  PX_ASSIGN_OR_RETURN(std::string content, ReadFileToString(memory_path));
+    if (content == "max") {
+      LOG(INFO) << "Memory.max is unlimited.";
+      return std::numeric_limits<size_t>::max();
+    }
+
+    size_t memory_max;
+    if (absl::SimpleAtoi(content, &memory_max)) {
+      return memory_max;
+    }
+
+    return error::Internal("Failed to parse memory.max at '$0': '$1'", memory_path_v2, content);
+  }
+  
+  // If memory.max doesn't exist, try cgroupv1 approach
+  // For cgroupv1, memory.limit_in_bytes is in the memory controller directory
+  std::filesystem::path procs_path_obj(procs_path);
+  std::filesystem::path parent_path = procs_path_obj.parent_path();
+  
+  // Try to find the memory controller directory
+  std::string memory_path_v1;
+  for (const auto& entry : std::filesystem::directory_iterator(parent_path.parent_path())) {
+    if (entry.path().filename() == "memory") {
+      memory_path_v1 = absl::StrCat(entry.path().string(), "/memory.limit_in_bytes");
+      break;
+    }
+  }
+  
+  if (memory_path_v1.empty()) {
+    return error::NotFound("Could not find memory controller for cgroupv1");
+  }
+  
+  PX_ASSIGN_OR_RETURN(std::string content, ReadFileToString(memory_path_v1));
   absl::StripAsciiWhitespace(&content);
 
   if (content == "max") {
-    LOG(INFO) << "Memory.max is unlimited.";
+    LOG(INFO) << "Memory.limit_in_bytes is unlimited.";
     return std::numeric_limits<size_t>::max();
   }
 
@@ -130,7 +197,7 @@ StatusOr<size_t> FindSelfCGroupMemoryMax(std::string_view base_path) {
     return memory_max;
   }
 
-  return error::Internal("Failed to parse memory.max at '$0': '$1'", memory_path, content);
+  return error::Internal("Failed to parse memory.limit_in_bytes at '$0': '$1'", memory_path_v1, content);
 }
 
 StatusOr<CGroupTemplateSpec> CreateCGroupTemplateSpecFromPath(std::string_view path) {

@@ -6,8 +6,6 @@ memory_threshold_count=0
 # Record startup time
 startup_time=$(date +%s)
 
-# Get hostname
-hostname=$(hostname)
 
 # Function to get time since startup in seconds
 get_uptime() {
@@ -35,17 +33,17 @@ run_pem() {
             memory_threshold_count=$((memory_threshold_count + 1))
             uptime_seconds=$(get_uptime)
             uptime_formatted=$(format_uptime $uptime_seconds)
-            echo "$(date '+%Y-%m-%d %H:%M:%S') - [$hostname] Memory threshold reached (count: $memory_threshold_count, uptime: $uptime_formatted) with code: $exit_code" >&2
+            echo "$(date '+%Y-%m-%d %H:%M:%S') - Memory threshold reached (count: $memory_threshold_count, uptime: $uptime_formatted) with code: $exit_code" >&2
             sleep 1
         else
             uptime_seconds=$(get_uptime)
             uptime_formatted=$(format_uptime $uptime_seconds)
-            echo "[$hostname] PEM exited with code $exit_code (uptime: $uptime_formatted), not restarting." >&2
+            echo "PEM exited with code $exit_code (uptime: $uptime_formatted), not restarting." >&2
             exit "$exit_code"
         fi
     done
 }
 
-trap "echo '[$hostname] Received termination signal, exiting.'; exit" SIGTERM SIGINT
+trap "echo 'Received termination signal, exiting.'; exit" SIGTERM SIGINT
 
 run_pem "$@"
