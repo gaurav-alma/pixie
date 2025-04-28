@@ -106,42 +106,70 @@ StatusOr<size_t> FindSelfCGroupMemoryCurrent(std::string_view base_path) {
   if (fs::Exists(memory_path_v2)) {
     PX_ASSIGN_OR_RETURN(std::string content, ReadFileToString(memory_path_v2));
     absl::StripAsciiWhitespace(&content);
-
     size_t memory_current;
     if (absl::SimpleAtoi(content, &memory_current)) {
       return memory_current;
     }
-
     return error::Internal("Failed to parse memory.current at '$0': '$1'", memory_path_v2, content);
   }
   
-  // If memory.current doesn't exist, try cgroupv1 approach
-  // For cgroupv1, memory.usage_in_bytes is in the memory controller directory
-  std::filesystem::path procs_path_obj(procs_path);
-  std::filesystem::path parent_path = procs_path_obj.parent_path();
-  
-  // Try to find the memory controller directory
+  // For cgroupv1, we need to find the memory controller's hierarchy
+  PX_ASSIGN_OR_RETURN(std::string proc_cgroups, ReadFileToString("/proc/self/cgroup"));
   std::string memory_path_v1;
-  for (const auto& entry : std::filesystem::directory_iterator(parent_path.parent_path())) {
-    if (entry.path().filename() == "memory") {
-      memory_path_v1 = absl::StrCat(entry.path().string(), "/memory.usage_in_bytes");
+  
+  // First find where the memory controller is mounted
+  std::string memory_mount_point;
+  PX_ASSIGN_OR_RETURN(std::string mounts, ReadFileToString("/proc/mounts"));
+  for (absl::string_view line : absl::StrSplit(mounts, '\n')) {
+    std::vector<absl::string_view> parts = absl::StrSplit(line, ' ', absl::SkipWhitespace());
+    if (parts.size() >= 3 && parts[2] == "cgroup" && 
+        absl::StrContains(parts[3], "memory")) {
+      memory_mount_point = std::string(parts[1]);
       break;
     }
   }
   
-  if (memory_path_v1.empty()) {
-    return error::NotFound("Could not find memory controller for cgroupv1");
+  if (memory_mount_point.empty()) {
+    return error::NotFound("Could not find memory controller mount point");
+  }
+  
+  // Now parse /proc/self/cgroup to find our path in the memory hierarchy
+  for (absl::string_view line : absl::StrSplit(proc_cgroups, '\n')) {
+    if (line.empty()) continue;
+    
+    // Format is "hierarchy:controllers:path"
+    std::vector<absl::string_view> parts = absl::StrSplit(line, ':');
+    if (parts.size() < 3) continue;
+    
+    // Check if this hierarchy includes memory controller
+    if (absl::StrContains(parts[1], "memory")) {
+      std::string cgroup_path = std::string(parts[2]);
+      // Ensure path starts with '/'
+      if (cgroup_path.empty() || cgroup_path[0] != '/') {
+        cgroup_path = "/" + cgroup_path;
+      }
+      
+      // Construct the full path
+      memory_path_v1 = absl::StrCat(memory_mount_point, cgroup_path, "/memory.usage_in_bytes");
+      if (fs::Exists(memory_path_v1)) {
+        break;
+      }
+    }
+  }
+  
+  if (memory_path_v1.empty() || !fs::Exists(memory_path_v1)) {
+    return error::NotFound("Could not find memory.usage_in_bytes for current cgroup");
   }
   
   PX_ASSIGN_OR_RETURN(std::string content, ReadFileToString(memory_path_v1));
   absl::StripAsciiWhitespace(&content);
-
   size_t memory_current;
   if (absl::SimpleAtoi(content, &memory_current)) {
     return memory_current;
   }
-
-  return error::Internal("Failed to parse memory.usage_in_bytes at '$0': '$1'", memory_path_v1, content);
+  
+  return error::Internal("Failed to parse memory.usage_in_bytes at '$0': '$1'", 
+                        memory_path_v1, content);
 }
 
 StatusOr<size_t> FindSelfCGroupMemoryMax(std::string_view base_path) {
@@ -154,7 +182,6 @@ StatusOr<size_t> FindSelfCGroupMemoryMax(std::string_view base_path) {
     absl::StripAsciiWhitespace(&content);
 
     if (content == "max") {
-      LOG(INFO) << "Memory.max is unlimited.";
       return std::numeric_limits<size_t>::max();
     }
 
@@ -166,29 +193,58 @@ StatusOr<size_t> FindSelfCGroupMemoryMax(std::string_view base_path) {
     return error::Internal("Failed to parse memory.max at '$0': '$1'", memory_path_v2, content);
   }
   
-  // If memory.max doesn't exist, try cgroupv1 approach
-  // For cgroupv1, memory.limit_in_bytes is in the memory controller directory
-  std::filesystem::path procs_path_obj(procs_path);
-  std::filesystem::path parent_path = procs_path_obj.parent_path();
-  
-  // Try to find the memory controller directory
+  // For cgroupv1, we need to find the memory controller's hierarchy
+  PX_ASSIGN_OR_RETURN(std::string proc_cgroups, ReadFileToString("/proc/self/cgroup"));
   std::string memory_path_v1;
-  for (const auto& entry : std::filesystem::directory_iterator(parent_path.parent_path())) {
-    if (entry.path().filename() == "memory") {
-      memory_path_v1 = absl::StrCat(entry.path().string(), "/memory.limit_in_bytes");
+  
+  // First find where the memory controller is mounted
+  std::string memory_mount_point;
+  PX_ASSIGN_OR_RETURN(std::string mounts, ReadFileToString("/proc/mounts"));
+  for (absl::string_view line : absl::StrSplit(mounts, '\n')) {
+    std::vector<absl::string_view> parts = absl::StrSplit(line, ' ', absl::SkipWhitespace());
+    if (parts.size() >= 3 && parts[2] == "cgroup" && 
+        absl::StrContains(parts[3], "memory")) {
+      memory_mount_point = std::string(parts[1]);
       break;
     }
   }
   
-  if (memory_path_v1.empty()) {
-    return error::NotFound("Could not find memory controller for cgroupv1");
+  if (memory_mount_point.empty()) {
+    return error::NotFound("Could not find memory controller mount point");
+  }
+  
+  // Now parse /proc/self/cgroup to find our path in the memory hierarchy
+  for (absl::string_view line : absl::StrSplit(proc_cgroups, '\n')) {
+    if (line.empty()) continue;
+    
+    // Format is "hierarchy:controllers:path"
+    std::vector<absl::string_view> parts = absl::StrSplit(line, ':');
+    if (parts.size() < 3) continue;
+    
+    // Check if this hierarchy includes memory controller
+    if (absl::StrContains(parts[1], "memory")) {
+      std::string cgroup_path = std::string(parts[2]);
+      // Ensure path starts with '/'
+      if (cgroup_path.empty() || cgroup_path[0] != '/') {
+        cgroup_path = "/" + cgroup_path;
+      }
+      
+      // Construct the full path
+      memory_path_v1 = absl::StrCat(memory_mount_point, cgroup_path, "/memory.limit_in_bytes");
+      if (fs::Exists(memory_path_v1)) {
+        break;
+      }
+    }
+  }
+  
+  if (memory_path_v1.empty() || !fs::Exists(memory_path_v1)) {
+    return error::NotFound("Could not find memory.limit_in_bytes for current cgroup");
   }
   
   PX_ASSIGN_OR_RETURN(std::string content, ReadFileToString(memory_path_v1));
   absl::StripAsciiWhitespace(&content);
 
-  if (content == "max") {
-    LOG(INFO) << "Memory.limit_in_bytes is unlimited.";
+  if (content == "max" || absl::StartsWith(content, "9223372036854771712")) {
     return std::numeric_limits<size_t>::max();
   }
 
@@ -196,8 +252,9 @@ StatusOr<size_t> FindSelfCGroupMemoryMax(std::string_view base_path) {
   if (absl::SimpleAtoi(content, &memory_max)) {
     return memory_max;
   }
-
-  return error::Internal("Failed to parse memory.limit_in_bytes at '$0': '$1'", memory_path_v1, content);
+  
+  return error::Internal("Failed to parse memory.limit_in_bytes at '$0': '$1'", 
+                        memory_path_v1, content);
 }
 
 StatusOr<CGroupTemplateSpec> CreateCGroupTemplateSpecFromPath(std::string_view path) {
