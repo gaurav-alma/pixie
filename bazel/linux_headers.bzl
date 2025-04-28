@@ -28,19 +28,17 @@ def linux_headers():
     http_file(
         name = "linux_headers_merged_x86_64_tar_gz",
         urls = [
-            "https://github.com/pixie-io/dev-artifacts/releases/download/linux-headers%2Fpl6/linux-headers-merged-x86_64-pl6.tar.gz",
-            "https://storage.googleapis.com/pixie-dev-public/linux-headers/pl6/linux-headers-merged-x86_64-pl6.tar.gz",
+		"https://github.com/gaurav-alma/dev-artifacts/releases/download/linux-headers%2Falma1/linux-headers-merged-x86_64-alma1.tar.gz" 
         ],
-        sha256 = "b99ac9def26c0c1ef03f34583a1e62b96b3b5f8b038428fa582ed28aacbe0ac3",
+        sha256 = "c46caf685a575e01fb994e5112471df6bd6329ca82e5142beea37c21f1f2d3cc",
         downloaded_file_path = "linux-headers-merged-x86_64.tar.gz",
     )
     http_file(
         name = "linux_headers_merged_arm64_tar_gz",
         urls = [
-            "https://github.com/pixie-io/dev-artifacts/releases/download/linux-headers%2Fpl6/linux-headers-merged-arm64-pl6.tar.gz",
-            "https://storage.googleapis.com/pixie-dev-public/linux-headers/pl6/linux-headers-merged-arm64-pl6.tar.gz",
+		"https://github.com/gaurav-alma/dev-artifacts/releases/download/linux-headers%2Falma1/linux-headers-merged-arm64-alma1.tar.gz"
         ],
-        sha256 = "3daa69cc0e0516c2e9190b6c90ed42cbd8cdabc377c30571fc7037354dc5c57f",
+        sha256 = "4b85454c1fa73e43567d5377645c11edc155dce31663da16c735337919c56afc", 
         downloaded_file_path = "linux-headers-merged-arm64.tar.gz",
     )
 

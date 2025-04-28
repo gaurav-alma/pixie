@@ -102,12 +102,8 @@ LINUX_KERNEL_VERSIONS := 4.14.304 \
 	5.19.17 \
 	6.0.19 \
 	6.1.8 \
-	6.2.16 \
-	6.3.13 \
-	6.6.53 \
-	6.8.12 \
-	6.10.12 \
-	6.11.1
+	6.6.87
+
 
 LINUX_HEADER_X86_64_TEMPLATE := linux-headers-x86_64-%.tar.gz
 LINUX_HEADER_ARM64_TEMPLATE := linux-headers-arm64-%.tar.gz
@@ -260,7 +256,6 @@ $(LINUX_HEADERS_ARM64_MERGED_FILE): $(LINUX_HEADER_ARM64_TARGETS)
 
 .PHONY: upload_linux_headers
 upload_linux_headers:  $(LINUX_HEADERS_X86_64_MERGED_FILE) $(LINUX_HEADERS_ARM64_MERGED_FILE) ## Target to build and upload linux headers image
-	gsutil cp $^ $(LINUX_HEADERS_GS_PATH)
 	$(GH_RELEASE_UPLOAD) linux-headers $(LINUX_HEADERS_REV) $^
 	sha256sum $^
 
