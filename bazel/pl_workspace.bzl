@@ -96,3 +96,11 @@ def qemu_with_kernel_deps():
         downloaded_file_path = "busybox",
         executable = True,
     )
+
+    http_file(
+        name = "busybox_arm64",
+        url = "https://github.com/shutingrz/busybox-static-binaries-fat/raw/refs/heads/main/busybox-aarch64-linux-gnu",
+        sha256 = "aaa70a37da6eba3dfefc2ce9279788cf57c6086cc72282b21e899764e7c4e574",
+        downloaded_file_path = "busybox",
+        executable = True,
+    )

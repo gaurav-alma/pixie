@@ -63,11 +63,23 @@ pl_cc_binary(
 )
 
 container_image(
-    name = "pem_base_image",
+    name = "pem_base_image_x86_64",
     base = "//:pl_cc_base_image",
-    files = [
-        "@busybox//file:busybox",
-    ],
+    files = ["@busybox//file:busybox"],
+    layers = ["//src/stirling:bpf_layer"],
+    symlinks = {
+        "/bin/bash": "/busybox",
+        "/bin/sh": "/busybox",
+        "/bin/sleep": "/busybox",
+        "/bin/awk": "/busybox",
+        "/bin/date": "/busybox",
+    },
+)
+
+container_image(
+    name = "pem_base_image_arm64",
+    base = "//:pl_cc_base_image",
+    files = ["@busybox_arm64//file:busybox"],
     layers = ["//src/stirling:bpf_layer"],
     symlinks = {
         "/bin/bash": "/busybox",
@@ -88,8 +100,30 @@ cc_image(
     ],
 )
 
+alias(
+    name = "pem_base_image",
+    actual = select({
+        "@platforms//cpu:aarch64": ":pem_base_image_arm64",
+        "//conditions:default": ":pem_base_image_x86_64",
+    }),
+)
+
 container_image(
     name = "pem_with_script",
+    base = ":pem_base_image",
+    files = [
+        "//src/vizier/services/agent/pem:run_pem.sh",
+        ":pem",
+    ],
+    entrypoint = ["/run_pem.sh"],
+    visibility = [
+        "//k8s:__subpackages__",
+        "//src/vizier:__subpackages__",
+    ],
+)
+
+container_image(
+    name = "pem_with_script_arm64",
     base = ":pem_base_image",
     files = [
         "//src/vizier/services/agent/pem:run_pem.sh",
