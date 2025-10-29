@@ -26,7 +26,7 @@ using ::px::vizier::agent::DefaultDeathHandler;
 using ::px::vizier::agent::StandalonePEMManager;
 using ::px::vizier::agent::TerminationHandler;
 
-DEFINE_int32(port, gflags::Int32FromEnv("PX_STANDALONE_PEM_PORT", 12345),
+DEFINE_int32(port, gflags::Int32FromEnv("PX_STANDALONE_PEM_PORT", 443),
              "The port where the PEM receives GRPC requests.");
 
 int main(int argc, char** argv) {

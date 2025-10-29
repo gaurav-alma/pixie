@@ -39,7 +39,7 @@ class StandaloneAgentMetadataStateManager : public AgentMetadataStateManager {
                                       sole::uuid agent_id, event::TimeSystem* time_system) {
     agent_metadata_state_ = std::make_shared<AgentMetadataState>(hostname, asid, pid, agent_id,
                                                                  /*pod_name=*/"", sole::uuid(),
-                                                                 "standalone_pem", "", time_system);
+                                                                 "shl", "", time_system);
   }
   virtual ~StandaloneAgentMetadataStateManager() = default;
   AgentMetadataFilter* metadata_filter() const override { return nullptr; }

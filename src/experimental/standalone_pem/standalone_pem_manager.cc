@@ -105,8 +105,7 @@ StandalonePEMManager::StandalonePEMManager(sole::uuid agent_id, std::string_view
   mds_manager_ = std::make_unique<px::md::StandaloneAgentMetadataStateManager>(
       info_.hostname, info_.asid, info_.pid, info_.agent_id, time_system_.get());
 
-  tracepoint_manager_ =
-      std::make_unique<TracepointManager>(dispatcher_.get(), stirling_.get(), table_store_.get());
+  // Tracepoint manager removed as tracepoint functionality is not needed in standalone PEM
   // Force Metadata Update.
   ECHECK_OK(mds_manager_->PerformMetadataStateUpdate());
 }
@@ -148,7 +147,7 @@ Status StandalonePEMManager::Init() {
 
   vizier_grpc_server_ =
       std::make_unique<VizierGRPCServer>(port_, carnot_.get(), results_sink_server_.get(),
-                                         carnot_->GetEngineState(), tracepoint_manager_.get());
+                                         carnot_->GetEngineState());
 
   return Status::OK();
 }
